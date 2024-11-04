@@ -2,90 +2,35 @@ use std::error::Error;
 use std::fs;
 use std::env;
 
-pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
-    let contents = fs::read_to_string(config.filename)?;
-    // ? == return the result to contents and continue if OK,
-    // return Err from function if unsuccessful
-
-    let results = if config.case_sensitive {
-        search(&config.query, &contents)
-    } else {
-        search_case_insensitive(&config.query, &contents)
-    };
-
-    for line in results {
-        println!("{}", line)
-    }
-
-    Ok(())
-}
-
+#[derive(Debug)]
 pub struct Config {
     pub query: String,
-    pub filename: String,
-    pub case_sensitive: bool,
+    pub file_path: String,
+    pub ignore_case: bool,
 }
 
 impl Config {
-    pub fn new(mut args: std::env::Args) -> Result<Config, &'static str> {
-        args.next();
+    pub fn build(args: &[String]) -> Result<Config, &'static str> {
+        if args.len() < 3 {
+            return Err("not enough arguments");
+        }
 
-        let query = match args.next() {
-            Some(arg) => arg,
-            None => return Err("Didn't get a query string."),
-        };
+        let query = args[1].clone();
+        let file_path = args[2].clone();
 
-        let filename = match args.next() {
-            Some(arg) => arg,
-            None => return Err("Didn't get a file name."),
-        };
+        let ignore_case = env::var("IGNORE_CASE").is_ok();
 
-        let case_sensitive = env::var("CASE_INSENSITIVE").is_err();
-
-        Ok(Config { query, filename, case_sensitive })
+        Ok(Config {
+            query,
+            file_path,
+            ignore_case,
+        })
     }
-}
-
-// return value reference must live as long as the references in the
-// `contents` live because that's what is searched and then returned
-fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
-    contents.lines()
-        .filter(|line| line.contains(query))
-        .collect()
-}
-
-fn search_case_insensitive<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
-    let query = query.to_lowercase();
-
-    contents.lines()
-        .filter(|line| line.to_lowercase().contains(&query))
-        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    #[ignore]
-    fn valid_new_config() {
-        let config = get_valid_config();
-
-        assert_eq!(config.filename, "poem.txt");
-        assert_eq!(config.query, "find me");
-    }
-
-    #[test]
-    #[ignore]
-    fn invalid_new_config() {
-        let result = Config::new(std::env::args());
-
-        assert!(result.is_err());
-    }
-
-    fn get_valid_config() -> Config {
-        Config::new(std::env::args()).unwrap()
-    }
 
     #[test]
     fn case_sensitive() {
@@ -113,4 +58,49 @@ Trust me.";
             search_case_insensitive(query, contents)
         );
     }
+}
+
+pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
+    let mut results = Vec::new();
+
+    for line in contents.lines() {
+        if line.contains(query) {
+            results.push(line);
+        }
+    }
+
+    results
+}
+
+
+pub fn search_case_insensitive<'a>(
+    query: &str,
+    contents: &'a str,
+) -> Vec<&'a str> {
+    let query = query.to_lowercase();
+    let mut results = Vec::new();
+
+    for line in contents.lines() {
+        if line.to_lowercase().contains(&query) {
+            results.push(line);
+        }
+    }
+
+    results
+}
+
+pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
+    let contents = fs::read_to_string(config.file_path)?;
+
+    let results = if config.ignore_case {
+        search_case_insensitive(&config.query, &contents)
+    } else {
+        search(&config.query, &contents)
+    };
+
+    for line in results {
+        println!("{line}");
+    }
+
+    Ok(())
 }
